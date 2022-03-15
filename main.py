@@ -1,14 +1,23 @@
 import asyncio
-import sqlite3
 import datetime
+from limigrations import limigrations
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict
 
 import aiosqlite
 from aiohttp import web
+from aiohttp_basicauth import BasicAuthMiddleware
 
 
 router = web.RouteTableDef()
+
+
+class CustomAuth(BasicAuthMiddleware):
+    async def check_credentials(self, username, password, request):
+        return username == 'user' and password == 'password'
+
+
+custom_auth = CustomAuth()
 
 
 class NotFoundException(BaseException):
@@ -16,7 +25,7 @@ class NotFoundException(BaseException):
 
 
 def generate_id(type: int) -> int:
-    ts = datetime.datetime.now().timestamp()
+    ts = datetime.datetime.utcnow().timestamp()
     node_id = 0
     return (int(ts) << 16) + (node_id << 24) + (type << 32)
 
@@ -51,6 +60,24 @@ async def fetch_player(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
             "wins": row["wins"],
             "losses": row["losses"],
             "team": await fetch_team(db, row["team"])
+        }
+
+
+async def fetch_player_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+    async with db.execute(
+        f"SELECT * FROM players WHERE id = {id}"
+    ) as cursor:
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException(f"Player {id} does not exist!")
+        return {
+            "id": row["id"],
+            "type": "player",
+            "name": row["name"],
+            "grade": row["grade"],
+            "wins": row["wins"],
+            "losses": row["losses"],
+            "team": None
         }
 
 
@@ -107,6 +134,22 @@ async def fetch_game(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
             "black": (await fetch_player(db, row['black'])),
             "official": official_obj,
             "result": row['result']
+        }
+
+
+async def fetch_enrollment(db: aiosqlite.Connection, id:int) -> Dict[str, Any]:
+    async with db.execute(
+        f"SELECT * FROM enrollment WHERE id = {id}"
+    ) as cursor:
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException(f"enrollment card {id} does not exist!")
+        return {
+            "id": row['id'],
+            "type": "enrollment",
+            "player": (await fetch_player_light(db, row['player_id'])),
+            "tournament": (await fetch_tournament(db, row['tournament_id'])),
+            "team": (await fetch_team(db, row['team_id']))
         }
 
 
@@ -298,6 +341,24 @@ async def edit_tournaments(request: web.Request) -> web.json_response():
         )
     new_tournament = await fetch_tournament(db, tournament_id)
     return web.json_response(new_tournament)
+
+
+@router.post("/tournaments/{id}/enroll")
+@handle_json_error
+async def enroll(request: web.Request) -> web.json_response():
+    info = await request.json()
+    tournament_id = request.match_info['id']
+    db = request.config_dict['DB']
+    player = info['id']
+    team = info['team']
+    id = generate_id(4)
+    await db.execute(
+        """INSERT INTO enrollment (id, player_id, tournament_id, team_id) VALUES (?, ?, ?, ?)
+        """, [id, player, tournament_id, team]
+    )
+    await db.commit()
+    enrollment = await fetch_enrollment(db, id)
+    return web.json_response(enrollment)
 
 
 # Official Queries
@@ -506,7 +567,7 @@ async def init_db(app: web.Application) -> AsyncIterator[None]:
 
 
 async def init_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[custom_auth])
     app.add_routes(router)
     app.cleanup_ctx.append(init_db)
     return app
@@ -517,65 +578,7 @@ def try_make_db() -> None:
     if sqlite_db.exists():
         return
 
-    with sqlite3.connect(sqlite_db) as conn:
-        cur = conn.cursor()
-        cur.execute(
-            """CREATE TABLE IF NOT EXISTS teams (
-            id INTEGER PRIMARY KEY,
-            name TEXT,
-            sponsor_name TEXT
-            )
-        """
-        )
-        cur.execute(
-            """CREATE TABLE IF NOT EXISTS players (
-            id INTEGER PRIMARY KEY,
-            name TEXT,
-            grade TEXT,
-            wins INTEGER DEFAULT 0,
-            losses INTEGER DEFAULT 0,
-            team INTEGER,
-            FOREIGN KEY (team) REFERENCES teams(id)
-            )
-        """
-        )
-        cur.execute(
-            """CREATE TABLE IF NOT EXISTS officials (
-            id INTEGER PRIMARY KEY,
-            name TEXT,
-            email TEXT,
-            verified TEXT
-            )
-        """
-        )
-        cur.execute(
-            """CREATE TABLE IF NOT EXISTS tournaments (
-                id INTEGER PRIMARY KEY,
-                name TEXT,
-                date INTEGER,
-                official INTEGER,
-                location TEXT,
-                FOREIGN KEY (official) REFERENCES officials(id)
-            )
-            """
-        )
-        cur.execute(
-            """CREATE TABLE IF NOT EXISTS games (
-                id INTEGER PRIMARY KEY,
-                tournament_id INTEGER,
-                board INTEGER,
-                white INTEGER,
-                black INTEGER,
-                official INTEGER,
-                result TEXT,
-                FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
-                FOREIGN KEY (white) REFERENCES players(id),
-                FOREIGN KEY (black) REFERENCES players(id),
-                FOREIGN KEY (official) REFERENCES officials(id)
-            )
-            """
-        )
-        conn.commit()
+    limigrations.migrate("db.sqlite3", "migrations")
 
 
 try_make_db()
