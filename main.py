@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import random
 from limigrations import limigrations
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict
@@ -27,7 +28,7 @@ class NotFoundException(BaseException):
 def generate_id(type: int) -> int:
     ts = datetime.datetime.utcnow().timestamp()
     node_id = 0
-    return (int(ts) << 16) + (node_id << 24) + (type << 32)
+    return (int(ts) << 16) + (node_id << 20) + (type << 24) + (random.randint(1, 1000) << 32)
 
 
 async def fetch_team(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
@@ -343,13 +344,35 @@ async def edit_tournaments(request: web.Request) -> web.json_response():
     return web.json_response(new_tournament)
 
 
-@router.post("/tournaments/{id}/enroll")
+@router.post("/tournaments/{id}/enroll/mass")
 @handle_json_error
-async def enroll(request: web.Request) -> web.json_response():
+async def enroll_mass(request: web.Request) -> web.json_response():
     info = await request.json()
     tournament_id = request.match_info['id']
     db = request.config_dict['DB']
-    player = info['id']
+    enroll_list = info['list']
+    output = []
+    for player in enroll_list:
+        id = generate_id(4)
+        player_id = player['player']
+        team_id = player['team']
+        await db.execute(
+            """INSERT INTO enrollment (id, player_id, tournament_id, team_id) VALUES (?, ?, ?, ?)
+            """, [id, player_id, tournament_id, team_id]
+        )
+        await db.commit()
+        enrollment = await fetch_enrollment(db, id)
+        output.append(enrollment)
+    return web.json_response(output)
+
+
+@router.post("/tournaments/{id}/enroll")
+@handle_json_error
+async def enroll_individual(request: web.Request) -> web.json_response():
+    info = await request.json()
+    tournament_id = request.match_info['id']
+    db = request.config_dict['DB']
+    player = info['player']
     team = info['team']
     id = generate_id(4)
     await db.execute(
