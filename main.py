@@ -21,6 +21,10 @@ class CustomAuth(BasicAuthMiddleware):
 custom_auth = CustomAuth()
 
 
+def sort_by_wins(e):
+    return e['wins']
+
+
 class NotFoundException(BaseException):
     pass
 
@@ -57,7 +61,7 @@ async def fetch_player(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
             "id": row["id"],
             "type": "player",
             "name": row["name"],
-            "grade": row["grade"],
+            "grade": int(row["grade"]),
             "wins": row["wins"],
             "losses": row["losses"],
             "team": await fetch_team(db, row["team"])
@@ -75,7 +79,7 @@ async def fetch_player_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any
             "id": row["id"],
             "type": "player",
             "name": row["name"],
-            "grade": row["grade"],
+            "grade": int(row["grade"]),
             "wins": row["wins"],
             "losses": row["losses"],
             "team": None
@@ -110,6 +114,8 @@ async def fetch_tournament(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
             "type": "tournament",
             "name": row["name"],
             "date": row["date"],
+            "boards": row['boards'],
+            "rounds": row['rounds'],
             "location": row["location"],
             "official": (await fetch_official(db, row["official"]))
         }
@@ -130,6 +136,7 @@ async def fetch_game(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
             "id": row["id"],
             "type": "game",
             "board": row['board'],
+            "round": row['round'],
             "tournament": (await fetch_tournament(db, row['tournament_id'])),
             "white": (await fetch_player(db, row['white'])),
             "black": (await fetch_player(db, row['black'])),
@@ -151,6 +158,68 @@ async def fetch_enrollment(db: aiosqlite.Connection, id:int) -> Dict[str, Any]:
             "player": (await fetch_player_light(db, row['player_id'])),
             "tournament": (await fetch_tournament(db, row['tournament_id'])),
             "team": (await fetch_team(db, row['team_id']))
+        }
+
+
+async def add_win(db: aiosqlite.Connection, id:int, old_num: int) -> Dict[str, Any]:
+    async with db.execute(
+        f"UPDATE players SET wins = {old_num + 1} WHERE id = {id}"
+    ) as cursor:
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException(f"an error occured and the player who won is no longer in the database. please "
+                                    f"contact the administrator")
+        return {
+            "status": "ok"
+        }
+
+
+async def add_loss(db: aiosqlite.Connection, id:int, old_num: int) -> Dict[str, Any]:
+    async with db.execute(
+        f"UPDATE players SET losses = {old_num + 1} WHERE id = {id}"
+    ) as cursor:
+        row = await cursor.fetchone()
+        if not row:
+            raise NotFoundException(f"an error occured and the player who lossed is no longer in the database. please "
+                                    f"contact the administrator")
+        return {
+            "status": "ok"
+        }
+
+
+async def add_draw(db: aiosqlite.Connection, id_1: int, id_2: int, wins_1: int, wins_2: int, losses_1: int, losses_2: int) -> Dict[str, Any]:
+    async with db.executescript(
+        f"""UPDATE players SET losses = {losses_1 + .5} WHERE id = {id_1};
+            UPDATE players SET wins = {wins_1 + .5} WHERE id = {id_1};
+            UPDATE players SET losses = {losses_2 + .5} WHERE id = {id_2};
+            UPDATE players SET wins = {wins_2 + .5} WHERE id = {id_2};"""
+    ) as cursor:
+        row = await cursor.fetchall()
+        if not row:
+            raise NotFoundException(f"an error occured and one player is no longer in the database. please "
+                                    f"contact the administrator")
+        return {
+            "status": "ok"
+        }
+
+
+async def create_game(db: aiosqlite.Connection, white: int, black: int, board: int, round: int, tournament: int) -> Dict[str, Any]:
+    id = generate_id(3)
+    async with db.execute(
+        """INSERT INTO games (id, board, white, black, round, tournament_id) VALUES (?, ?, ?, ?, ?, ?) RETURN *""", [id, board, white, black, round, tournament]
+    ) as cursor:
+        row = cursor.fetchone()
+        if not row:
+            raise RuntimeError("There was a problem adding the game to the database. THIS IS A BUG")
+        return {
+            "id": id,
+            "tournament": (await fetch_tournament(db, tournament)),
+            "board": board,
+            "round": round,
+            "white": (await fetch_player(db, white)),
+            "black": (await fetch_player(db, black)),
+            "official": None,
+            "result": None
         }
 
 
@@ -179,31 +248,14 @@ def handle_json_error(
 @handle_json_error
 async def create_game(request: web.Request) -> web.json_response():
     info = await request.json()
-    id = generate_id(3)
     tournament = info['tournament']
     white = info['white']
     black = info['black']
     board = info['board']
+    round = info['round']
     db = request.config_dict['DB']
-    tournament_obj = await fetch_tournament(db, tournament)
-    white_obj = await fetch_player(db, white)
-    black_obj = await fetch_player(db, black)
-    await db.execute(
-        "INSERT INTO games (id, tournament_id, board, white, black) VALUES(?, ?, ?, ?, ?)", [id, tournament, board, white, black]
-    )
-    await db.commit()
-    return web.json_response(
-        {
-            "id": id,
-            "type": "game",
-            "tournament": tournament_obj,
-            "board": board,
-            "white": white_obj,
-            "black": black_obj,
-            "official": None,
-            "result": None
-        }
-    )
+    game = await create_game(db, white, black, board, round, tournament)
+    return web.json_response(game)
 
 
 @router.get("/games/{id}")
@@ -243,7 +295,6 @@ async def edit_game(request: web.Request) -> web.json_response():
 
 
 @router.post("/games/{id}/resolve")
-@handle_json_error
 async def resolve_game(request: web.Request) -> web.json_response():
     game_id = request.match_info['id']
     info = await request.json()
@@ -263,6 +314,15 @@ async def resolve_game(request: web.Request) -> web.json_response():
         await db.execute(
             f"UPDATE games SET {field_names} WHERE id = ?", field_values + [game_id]
         )
+    if result:
+        if result == game["white"]["id"]:
+            await add_win(db, result, game['white']['wins'])
+            await add_loss(db, game['black']['id'], game['black']['losses'])
+        if result == game["black"]['id']:
+            await add_win(db, result, game['black']['wins'])
+            await add_loss(db, game['white']['id'], game['white']['losses'])
+        else:
+            await add_draw(db, game['white']['id'], game['black']['id'], game['white']['wins'], game['black']['wins'], game['white']['losses'], game['black']['losses'])
     new_game = await fetch_game(db, game_id)
     return web.json_response(new_game)
 
@@ -292,10 +352,12 @@ async def create_tournament(request: web.Request) -> web.json_response():
     date = info['date']
     official = info['official']
     location = info['location']
+    boards = info['boards']
+    rounds = info['rounds']
     db = request.config_dict['DB']
     official_obj = await fetch_official(db, official)
     await db.execute(
-        "INSERT INTO tournaments (id, name, date, official, location) VALUES(?, ?, ?, ?, ?)", [id, name, date, official, location]
+        "INSERT INTO tournaments (id, name, date, official, location, boards, rounds) VALUES(?, ?, ?, ?, ?, ?, ?)", [id, name, date, official, location, boards, rounds]
     )
     await db.commit()
     return web.json_response(
@@ -304,6 +366,8 @@ async def create_tournament(request: web.Request) -> web.json_response():
             "type": "tournament",
             "name": name,
             "date": date,
+            "rounds": rounds,
+            "boards": boards,
             "location": location,
             "official": official_obj
         }
@@ -334,6 +398,10 @@ async def edit_tournaments(request: web.Request) -> web.json_response():
         fields["official"] = tournament["official"]
     if "location" in tournament:
         fields['location'] = tournament['location']
+    if "rounds" in tournament:
+        fields['rounds'] = tournament['rounds']
+    if "boards" in tournament:
+        fields['boards'] = tournament['boards']
     if fields:
         field_names = ", ".join(f"{name} = ?" for name in fields)
         field_values = list(fields.values())
@@ -382,6 +450,39 @@ async def enroll_individual(request: web.Request) -> web.json_response():
     await db.commit()
     enrollment = await fetch_enrollment(db, id)
     return web.json_response(enrollment)
+
+
+@router.post("/tournaments/{id}/organize/{round}")
+@handle_json_error
+async def organize_tournament(request: web.Request) -> web.json_response():
+    tournament_id = request.match_info['id']
+    round = request.match_info['round']
+    db = request.config_dict['DB']
+    players_enrolled = []
+    async with db.execute(
+        """SELECT * FROM enrollment WHERE tournament_id = ?""", [tournament_id]
+    ) as cursor:
+        enrollment = await cursor.fetchall()
+        for card in enrollment:
+            players_enrolled.append(await fetch_player(db, card['player_id']))
+    print(players_enrolled)
+    tournament = await fetch_tournament(db, tournament_id)
+    players_enrolled.sort(reverse=True, key=sort_by_wins)
+    i = 0
+    e = 0
+    games = []
+    while e < tournament['boards']:
+        try:
+            games.append({"white": players_enrolled[i]['id'], "black": players_enrolled[i + 1]['id'], "round": round, "board": e})
+            i += 2
+            e += 1
+        except IndexError:
+            games.append({"round": round, "board": e, "bye": players_enrolled[i]['id']})
+            break
+    created_games = []
+    for game in games:
+        created_games.append(await create_game(db, game['white'], game['black'], game['board'], round, tournament_id))
+    return web.json_response({"list": created_games})
 
 
 # Official Queries
