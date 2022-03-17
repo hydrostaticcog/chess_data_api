@@ -35,6 +35,18 @@ def generate_id(type: int) -> int:
     return (int(ts) << 16) + (node_id << 20) + (type << 24) + (random.randint(1, 1000) << 32)
 
 
+async def fetch_team_members(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+    async with db.execute(
+        f"SELECT * FROM players WHERE team = {id}"
+    ) as cursor:
+        rows = await cursor.fetchall()
+        members = []
+        for row in rows:
+            m = await fetch_player_light(db, row['id'])
+            members.append(m)
+        return members
+
+
 async def fetch_team(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
         f"SELECT * FROM teams WHERE id = {id}"
@@ -46,7 +58,8 @@ async def fetch_team(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
             "id": id,
             "type": "team",
             "name": row["name"],
-            "sponsor": row["sponsor_name"]
+            "sponsor": row["sponsor_name"],
+            "members": [await fetch_team_members(db, id)]
         }
 
 

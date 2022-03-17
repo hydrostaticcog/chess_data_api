@@ -90,6 +90,9 @@ class Migration(BaseMigration):
         c.execute(
             """alter table players add column draws INTEGER DEFAULT 0"""
         )
+        c.execute(
+            """CREATE UNIQUE INDEX games_uindex ON games(round, tournament_id, board)"""
+        )
         conn.commit()
         pass
 
