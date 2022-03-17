@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import random
+import json
 from limigrations import limigrations
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict
@@ -10,12 +11,16 @@ from aiohttp import web
 from aiohttp_basicauth import BasicAuthMiddleware
 
 
+with open("config.json", "r") as f:
+    creds = json.load(f)
+
+
 router = web.RouteTableDef()
 
 
 class CustomAuth(BasicAuthMiddleware):
     async def check_credentials(self, username, password, request):
-        return username == 'user' and password == 'password'
+        return username == creds['username'] and password == creds['password']
 
 
 custom_auth = CustomAuth()
