@@ -87,6 +87,9 @@ class Migration(BaseMigration):
         c.execute(
             """ALTER TABLE tournaments ADD COLUMN boards INTEGER NOT NULL DEFAULT 10"""
         )
+        c.execute(
+            """alter table players add column draws INTEGER DEFAULT 0"""
+        )
         conn.commit()
         pass
 

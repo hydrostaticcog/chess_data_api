@@ -22,7 +22,7 @@ custom_auth = CustomAuth()
 
 
 def sort_by_wins(e):
-    return e['wins']
+    return e['wins'] + (e['draws'] * .5)
 
 
 class NotFoundException(BaseException):
@@ -64,6 +64,7 @@ async def fetch_player(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
             "grade": int(row["grade"]),
             "wins": row["wins"],
             "losses": row["losses"],
+            "draws": row["draws"],
             "team": await fetch_team(db, row["team"])
         }
 
@@ -81,6 +82,7 @@ async def fetch_player_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any
             "name": row["name"],
             "grade": int(row["grade"]),
             "wins": row["wins"],
+            "draws": row["draws"],
             "losses": row["losses"],
             "team": None
         }
@@ -161,56 +163,48 @@ async def fetch_enrollment(db: aiosqlite.Connection, id:int) -> Dict[str, Any]:
         }
 
 
-async def add_win(db: aiosqlite.Connection, id:int, old_num: int) -> Dict[str, Any]:
+async def add_win(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+    player = await fetch_player(db, id)
     async with db.execute(
-        f"UPDATE players SET wins = {old_num + 1} WHERE id = {id}"
+        f"UPDATE players SET wins = {player['wins'] + 1} WHERE id = {id}"
     ) as cursor:
-        row = await cursor.fetchone()
-        if not row:
-            raise NotFoundException(f"an error occured and the player who won is no longer in the database. please "
-                                    f"contact the administrator")
+        await db.commit()
         return {
             "status": "ok"
         }
 
 
-async def add_loss(db: aiosqlite.Connection, id:int, old_num: int) -> Dict[str, Any]:
+async def add_loss(db: aiosqlite.Connection, id: int,) -> Dict[str, Any]:
+    player = await fetch_player(db, id)
     async with db.execute(
-        f"UPDATE players SET losses = {old_num + 1} WHERE id = {id}"
+        f"UPDATE players SET losses = {player['losses'] + 1} WHERE id = {id}"
     ) as cursor:
-        row = await cursor.fetchone()
-        if not row:
-            raise NotFoundException(f"an error occured and the player who lossed is no longer in the database. please "
-                                    f"contact the administrator")
+        await db.commit()
         return {
             "status": "ok"
         }
 
 
-async def add_draw(db: aiosqlite.Connection, id_1: int, id_2: int, wins_1: int, wins_2: int, losses_1: int, losses_2: int) -> Dict[str, Any]:
+async def add_draw(db: aiosqlite.Connection, id_1: int, id_2: int) -> Dict[str, Any]:
+    player1 = await fetch_player(db, id_1)
+    player2 = await fetch_player(db, id_2)
     async with db.executescript(
-        f"""UPDATE players SET losses = {losses_1 + .5} WHERE id = {id_1};
-            UPDATE players SET wins = {wins_1 + .5} WHERE id = {id_1};
-            UPDATE players SET losses = {losses_2 + .5} WHERE id = {id_2};
-            UPDATE players SET wins = {wins_2 + .5} WHERE id = {id_2};"""
+        f"""UPDATE players SET draws = {player1['draws'] + 1} WHERE id = {id_1};
+            UPDATE players SET draws = {player2['draws'] + 1} WHERE id = {id_2};
+        """
     ) as cursor:
-        row = await cursor.fetchall()
-        if not row:
-            raise NotFoundException(f"an error occured and one player is no longer in the database. please "
-                                    f"contact the administrator")
+        await db.commit()
         return {
             "status": "ok"
         }
 
 
-async def create_game(db: aiosqlite.Connection, white: int, black: int, board: int, round: int, tournament: int) -> Dict[str, Any]:
+async def setup_game(db: aiosqlite.Connection, white: int, black: int, board: int, round: int, tournament: int) -> Dict[str, Any]:
     id = generate_id(3)
     async with db.execute(
-        """INSERT INTO games (id, board, white, black, round, tournament_id) VALUES (?, ?, ?, ?, ?, ?) RETURN *""", [id, board, white, black, round, tournament]
+        """INSERT INTO games (id, board, white, black, round, tournament_id) VALUES (?, ?, ?, ?, ?, ?)""", [id, board, white, black, round, tournament]
     ) as cursor:
-        row = cursor.fetchone()
-        if not row:
-            raise RuntimeError("There was a problem adding the game to the database. THIS IS A BUG")
+        await db.commit()
         return {
             "id": id,
             "tournament": (await fetch_tournament(db, tournament)),
@@ -254,7 +248,7 @@ async def create_game(request: web.Request) -> web.json_response():
     board = info['board']
     round = info['round']
     db = request.config_dict['DB']
-    game = await create_game(db, white, black, board, round, tournament)
+    game = await setup_game(db, white, black, board, round, tournament)
     return web.json_response(game)
 
 
@@ -290,6 +284,7 @@ async def edit_game(request: web.Request) -> web.json_response():
         await db.execute(
             f"UPDATE games SET {field_names} WHERE id = ?", field_values + [game_id]
         )
+        await db.commit()
     new_game = await fetch_game(db, game_id)
     return web.json_response(new_game)
 
@@ -314,15 +309,16 @@ async def resolve_game(request: web.Request) -> web.json_response():
         await db.execute(
             f"UPDATE games SET {field_names} WHERE id = ?", field_values + [game_id]
         )
+        await db.commit()
     if result:
         if result == game["white"]["id"]:
-            await add_win(db, result, game['white']['wins'])
-            await add_loss(db, game['black']['id'], game['black']['losses'])
+            await add_win(db, result)
+            await add_loss(db, game['black']['id'])
         if result == game["black"]['id']:
-            await add_win(db, result, game['black']['wins'])
-            await add_loss(db, game['white']['id'], game['white']['losses'])
+            await add_win(db, result)
+            await add_loss(db, game['white']['id'])
         else:
-            await add_draw(db, game['white']['id'], game['black']['id'], game['white']['wins'], game['black']['wins'], game['white']['losses'], game['black']['losses'])
+            await add_draw(db, game['white']['id'], game['black']['id'])
     new_game = await fetch_game(db, game_id)
     return web.json_response(new_game)
 
@@ -453,7 +449,6 @@ async def enroll_individual(request: web.Request) -> web.json_response():
 
 
 @router.post("/tournaments/{id}/organize/{round}")
-@handle_json_error
 async def organize_tournament(request: web.Request) -> web.json_response():
     tournament_id = request.match_info['id']
     round = request.match_info['round']
@@ -477,11 +472,20 @@ async def organize_tournament(request: web.Request) -> web.json_response():
             i += 2
             e += 1
         except IndexError:
-            games.append({"round": round, "board": e, "bye": players_enrolled[i]['id']})
+            games.append({"round": round, "board": e, "bye": players_enrolled[i]})
             break
+    print(games)
     created_games = []
     for game in games:
-        created_games.append(await create_game(db, game['white'], game['black'], game['board'], round, tournament_id))
+        try:
+            created = await setup_game(db, white=game['white'], black=game['black'], board=game['board'], round=round, tournament=tournament_id)
+            print(f"creating game {game}")
+            created_games.append(created)
+        except KeyError:
+            await add_win(db, game['bye']['id'])
+            print(f"created bye {game}")
+            created_games.append({"bye": game['bye']['id'], "round": game['round']})
+    print(created_games)
     return web.json_response({"list": created_games})
 
 
@@ -562,7 +566,8 @@ async def create_player(request: web.Request) -> web.json_response():
             "grade": grade,
             "team": team_obj,
             "wins": 0,
-            "losses": 0
+            "losses": 0,
+            "draws": 0
         }
     )
 
