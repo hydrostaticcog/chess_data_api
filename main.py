@@ -118,7 +118,7 @@ async def fetch_player_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any
             "wins": row["wins"],
             "draws": row["draws"],
             "losses": row["losses"],
-            "team": (await fetch_team_light(db, row['team']))
+            "team": row['team']
         }
 
 
