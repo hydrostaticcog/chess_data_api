@@ -77,8 +77,6 @@ class Migration(BaseMigration):
             )
         """)
         c.execute(
-            """CREATE UNIQUE INDEX unique_index ON enrollment(player_id, tournament_id)""")
-        c.execute(
             """ALTER TABLE games ADD COLUMN round INTEGER"""
         )
         c.execute(
