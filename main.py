@@ -415,7 +415,7 @@ async def resolve_game(request: web.Request) -> web.json_response():
         if result == game["black"]['id']:
             await add_win(db, result)
             await add_loss(db, game['white']['id'])
-        else:
+        if result == "draw":
             await add_draw(db, game['white']['id'], game['black']['id'])
     new_game = await fetch_game(db, game_id)
     return web.json_response(new_game)
