@@ -54,6 +54,19 @@ async def fetch_team_members(db: aiosqlite.Connection, id: int):
         return members
 
 
+async def fetch_team_leaderboard(db: aiosqlite.Connection, id: int):
+    async with db.execute(
+        f"SELECT * FROM players WHERE team = {id}"
+    ) as cursor:
+        rows = await cursor.fetchall()
+        members = []
+        for row in rows:
+            m = await fetch_player_light(db, row['id'])
+            members.append(m)
+        members.sort(key=lambda s: s['wins'] + .5 * s['draws'])
+        return members
+
+
 async def fetch_team(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
         f"SELECT * FROM teams WHERE id = {id}"
@@ -743,6 +756,15 @@ async def get_teams(request: web.Request) -> web.json_response():
     team_id = request.match_info['id']
     db = request.config_dict['DB']
     team = await fetch_team(db, team_id)
+    return web.json_response(team)
+
+
+@router.get("/teams/{id}/leaderboard")
+@handle_json_error
+async def get_team_lb(request: web.Request) -> web.json_response():
+    team_id = request.match_info['id']
+    db = request.config_dict['DB']
+    team = await fetch_team_leaderboard(db, team_id)
     return web.json_response(team)
 
 
