@@ -30,6 +30,7 @@ def sort_by_wins(e):
     return e['wins'] + (e['draws'] * .5)
 
 
+
 class NotFoundException(BaseException):
     pass
 
@@ -40,7 +41,7 @@ def generate_id(type: int) -> int:
     return (int(ts) << 16) + (node_id << 20) + (type << 24) + (random.randint(1, 1000) << 32)
 
 
-async def fetch_team_members(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def fetch_team_members(db: aiosqlite.Connection, id: int):
     async with db.execute(
         f"SELECT * FROM players WHERE team = {id}"
     ) as cursor:
@@ -49,6 +50,7 @@ async def fetch_team_members(db: aiosqlite.Connection, id: int) -> Dict[str, Any
         for row in rows:
             m = await fetch_player_light(db, row['id'])
             members.append(m)
+        members.sort(key=lambda s: s['name'].split()[-1])
         return members
 
 
