@@ -30,7 +30,6 @@ def sort_by_wins(e):
     return e['wins'] + (e['draws'] * .5)
 
 
-
 class NotFoundException(BaseException):
     pass
 
@@ -63,7 +62,7 @@ async def fetch_team_leaderboard(db: aiosqlite.Connection, id: int):
         for row in rows:
             m = await fetch_player_light(db, row['id'])
             members.append(m)
-        members.sort(key=lambda s: s['wins'] + .5 * s['draws'])
+        members.sort(reverse=True, key=lambda s: s['wins'] + .5 * s['draws'])
         return members
 
 
