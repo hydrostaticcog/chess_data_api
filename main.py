@@ -62,7 +62,7 @@ async def fetch_team_leaderboard(db: aiosqlite.Connection, id: int):
         for row in rows:
             m = await fetch_player_light(db, row['id'])
             members.append(m)
-        members.sort(reverse=True, key=lambda s: s['wins'] + .5 * s['draws'])
+        members.sort(reverse=True, key=lambda s: (s['wins'] + .5 * s['draws']) - (s['losses'] + .5 * s['draws']))
         return members
 
 
