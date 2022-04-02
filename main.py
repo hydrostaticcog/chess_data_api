@@ -429,6 +429,7 @@ async def edit_game(request: web.Request) -> web.json_response():
 
 
 @router.post("/games/{id}/resolve")
+@handle_json_error
 async def resolve_game(request: web.Request) -> web.json_response():
     game_id = request.match_info['id']
     info = await request.json()
@@ -519,6 +520,7 @@ async def get_tournaments(request: web.Request) -> web.json_response():
 
 
 @router.get("/tournaments/{id}/standings/{player_id}")
+@handle_json_error
 async def get_player_standings_t(request: web.Request) -> web.json_response():
     tournament_id = request.match_info['id']
     player_id = request.match_info['player_id']
@@ -607,7 +609,7 @@ async def organize_tournament(request: web.Request) -> web.json_response():
     ) as cursor:
         enrollment = await cursor.fetchall()
         for card in enrollment:
-            players_enrolled.append(await fetch_player_standings(db, card['player_id']), tournament_id)
+            players_enrolled.append(await fetch_player_standings(db, card['player_id'], tournament_id))
     print(players_enrolled)
     tournament = await fetch_tournament(db, tournament_id)
     players_enrolled.sort(reverse=True, key=sort_by_wins)
