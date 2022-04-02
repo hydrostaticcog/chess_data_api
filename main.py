@@ -346,11 +346,11 @@ async def setup_game(db: aiosqlite.Connection, white: int, black: int, board: in
         await db.commit()
         return {
             "id": id,
-            "tournament": (await fetch_tournament(db, tournament)),
+            "tournament": (await fetch_tournament_light(db, tournament)),
             "board": board,
             "round": round,
-            "white": (await fetch_player(db, white)),
-            "black": (await fetch_player(db, black)),
+            "white": (await fetch_player_light(db, white)),
+            "black": (await fetch_player_light(db, black)),
             "official": None,
             "result": None
         }
