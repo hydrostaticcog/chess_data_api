@@ -154,7 +154,8 @@ async def fetch_player_standings(db: aiosqlite.Connection, id: int, tournament_i
             else:
                 draws += 1
         return {
-            "player": id,
+            "id": id,
+            "type": "player-tournament_standings",
             "tournament": tournament_id,
             "wins": wins,
             "losses": losses,
@@ -604,7 +605,7 @@ async def organize_tournament(request: web.Request) -> web.json_response():
     ) as cursor:
         enrollment = await cursor.fetchall()
         for card in enrollment:
-            players_enrolled.append(await fetch_player(db, card['player_id']))
+            players_enrolled.append(await fetch_player_standings(db, card['player_id']), tournament_id)
     print(players_enrolled)
     tournament = await fetch_tournament(db, tournament_id)
     players_enrolled.sort(reverse=True, key=sort_by_wins)
