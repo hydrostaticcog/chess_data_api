@@ -520,7 +520,7 @@ async def get_player_standings_t(request: web.Request) -> web.json_response():
     tournament_id = request.match_info['id']
     player_id = request.match_info['player_id']
     db = request.config_dict['DB']
-    results = await fetch_player_standings(db, tournament_id, player_id)
+    results = await fetch_player_standings(db, player_id, tournament_id)
     return web.json_response(results)
 
 
