@@ -149,7 +149,7 @@ async def fetch_player_standings(db: aiosqlite.Connection, id: int, tournament_i
             print(row)
             if row['result'] == id:
                 wins += 1
-            elif row['result'] == 'draw' or row['result'] is None:
+            elif row['result'] == 'draw':
                 draws += 1
             else:
                 losses += 1
