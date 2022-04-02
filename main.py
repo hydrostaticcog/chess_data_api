@@ -136,6 +136,32 @@ async def fetch_player_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any
         }
 
 
+async def fetch_player_standings(db: aiosqlite.Connection, id: int, tournament_id: int) -> Dict[str, Any]:
+    async with db.execute(
+        f"SELECT * FROM games WHERE (tournament_id = {tournament_id} AND {id} in (black, white))"
+    ) as cursor:
+        rows = await cursor.fetchall()
+        wins = 0
+        losses = 0
+        draws = 0
+        print(rows)
+        for row in rows:
+            print(row)
+            if row['result'] == id:
+                wins += 1
+            elif row['result'] != id and row['result'] != 'draw':
+                losses += 1
+            else:
+                draws += 1
+        return {
+            "player": id,
+            "tournament": tournament_id,
+            "wins": wins,
+            "losses": losses,
+            "draws": draws
+        }
+
+
 async def fetch_official(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
         f"SELECT * FROM officials WHERE id = {id}"
@@ -487,6 +513,15 @@ async def get_tournaments(request: web.Request) -> web.json_response():
     db = request.config_dict['DB']
     tournament = await fetch_tournament(db, tournament_id)
     return web.json_response(tournament)
+
+
+@router.get("/tournaments/{id}/standings/{player_id}")
+async def get_player_standings_t(request: web.Request) -> web.json_response():
+    tournament_id = request.match_info['id']
+    player_id = request.match_info['player_id']
+    db = request.config_dict['DB']
+    results = await fetch_player_standings(db, tournament_id, player_id)
+    return web.json_response(results)
 
 
 @router.patch("/tournaments/{id}")
