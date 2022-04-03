@@ -4,16 +4,14 @@ import random
 import json
 from limigrations import limigrations
 from pathlib import Path
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List
 
 import aiosqlite
 from aiohttp import web
 from aiohttp_basicauth import BasicAuthMiddleware
 
-
 with open("config.json", "r") as f:
     creds = json.load(f)
-
 
 router = web.RouteTableDef()
 
@@ -42,7 +40,7 @@ def generate_id(type: int) -> int:
 
 async def fetch_team_members(db: aiosqlite.Connection, id: int):
     async with db.execute(
-        f"SELECT * FROM players WHERE team = {id}"
+            "SELECT * FROM players WHERE team = ?", [id]
     ) as cursor:
         rows = await cursor.fetchall()
         members = []
@@ -55,7 +53,7 @@ async def fetch_team_members(db: aiosqlite.Connection, id: int):
 
 async def fetch_team_leaderboard(db: aiosqlite.Connection, id: int):
     async with db.execute(
-        f"SELECT * FROM players WHERE team = {id}"
+            "SELECT * FROM players WHERE team = ?", [id]
     ) as cursor:
         rows = await cursor.fetchall()
         members = []
@@ -68,7 +66,7 @@ async def fetch_team_leaderboard(db: aiosqlite.Connection, id: int):
 
 async def fetch_team(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
-        f"SELECT * FROM teams WHERE id = {id}"
+            "SELECT * FROM teams WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
         if not row:
@@ -84,7 +82,7 @@ async def fetch_team(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
 
 async def fetch_team_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
-        f"SELECT * FROM teams WHERE id = {id}"
+            "SELECT * FROM teams WHERE id = id", [id]
     ) as cursor:
         row = await cursor.fetchone()
         if not row:
@@ -100,7 +98,7 @@ async def fetch_team_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
 
 async def fetch_player(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
-        f"SELECT * FROM players WHERE id = {id}"
+            "SELECT * FROM players WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
         if not row:
@@ -119,7 +117,7 @@ async def fetch_player(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
 
 async def fetch_player_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
-        f"SELECT * FROM players WHERE id = {id}"
+            "SELECT * FROM players WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
         if not row:
@@ -138,7 +136,7 @@ async def fetch_player_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any
 
 async def fetch_player_standings(db: aiosqlite.Connection, id: int, tournament_id: int) -> Dict[str, Any]:
     async with db.execute(
-        f"SELECT * FROM games WHERE (tournament_id = {tournament_id} AND {id} in (black, white))"
+            "SELECT * FROM games WHERE (tournament_id = ? AND ? in (black, white))", [tournament_id, id]
     ) as cursor:
         rows = await cursor.fetchall()
         wins = 0
@@ -167,7 +165,7 @@ async def fetch_player_standings(db: aiosqlite.Connection, id: int, tournament_i
 
 async def fetch_official(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
-        f"SELECT * FROM officials WHERE id = {id}"
+            "SELECT * FROM officials WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
         if not row:
@@ -183,7 +181,7 @@ async def fetch_official(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
 
 async def fetch_tournament(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
-        f"SELECT * FROM tournaments WHERE id = {id}"
+            "SELECT * FROM tournaments WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
         if not row:
@@ -208,7 +206,7 @@ async def fetch_tournament(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
 
 async def fetch_tournament_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
-        f"SELECT * FROM tournaments WHERE id = {id}"
+            "SELECT * FROM tournaments WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
         if not row:
@@ -228,7 +226,7 @@ async def fetch_tournament_light(db: aiosqlite.Connection, id: int) -> Dict[str,
 
 async def fetch_game(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
-        f"SELECT * FROM games WHERE id = {id}"
+            "SELECT * FROM games WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
         if not row:
@@ -252,7 +250,7 @@ async def fetch_game(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
 
 async def fetch_game_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
-        f"SELECT * FROM games WHERE id = {id}"
+            "SELECT * FROM games WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
         if not row:
@@ -274,9 +272,9 @@ async def fetch_game_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
         }
 
 
-async def fetch_enrollment(db: aiosqlite.Connection, id:int) -> Dict[str, Any]:
+async def fetch_enrollment(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     async with db.execute(
-        f"SELECT * FROM enrollment WHERE id = {id}"
+            "SELECT * FROM enrollment WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
         if not row:
@@ -290,9 +288,9 @@ async def fetch_enrollment(db: aiosqlite.Connection, id:int) -> Dict[str, Any]:
         }
 
 
-async def fetch_games_by_rounds(db: aiosqlite.Connection, id: int, round: int) -> Dict[str, Any]:
+async def fetch_games_by_rounds(db: aiosqlite.Connection, id: int, round: int) -> List[Dict[str, Any]]:
     async with db.execute(
-        f"SELECT * FROM games WHERE tournament_id = {id} AND round = {round}"
+            "SELECT * FROM games WHERE tournament_id = ? AND round = ?", [id, round]
     ) as cursor:
         rows = await cursor.fetchall()
         games = []
@@ -304,60 +302,61 @@ async def fetch_games_by_rounds(db: aiosqlite.Connection, id: int, round: int) -
 
 async def add_win(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     player = await fetch_player(db, id)
-    async with db.execute(
-        f"UPDATE players SET wins = {player['wins'] + 1} WHERE id = {id}"
-    ) as cursor:
-        await db.commit()
-        return {
-            "status": "ok"
-        }
+    await db.execute(
+            f"UPDATE players SET wins = ? WHERE id = ?", [player['wins'] + 1, id]
+    )
+    await db.commit()
+    return {
+        "status": "ok"
+    }
 
 
-async def add_loss(db: aiosqlite.Connection, id: int,) -> Dict[str, Any]:
+async def add_loss(db: aiosqlite.Connection, id: int, ) -> Dict[str, Any]:
     player = await fetch_player(db, id)
-    async with db.execute(
-        f"UPDATE players SET losses = {player['losses'] + 1} WHERE id = {id}"
-    ) as cursor:
-        await db.commit()
-        return {
-            "status": "ok"
-        }
+    await db.execute(
+            f"UPDATE players SET losses = ? WHERE id = ?", [player['losses'] + 1, id])
+    await db.commit()
+    return {
+        "status": "ok"
+    }
 
 
 async def add_draw(db: aiosqlite.Connection, id_1: int, id_2: int) -> Dict[str, Any]:
     player1 = await fetch_player(db, id_1)
     player2 = await fetch_player(db, id_2)
-    async with db.executescript(
-        f"""UPDATE players SET draws = {player1['draws'] + 1} WHERE id = {id_1};
+    await db.executescript(
+            f"""UPDATE players SET draws = {player1['draws'] + 1} WHERE id = {id_1};
             UPDATE players SET draws = {player2['draws'] + 1} WHERE id = {id_2};
         """
-    ) as cursor:
-        await db.commit()
-        return {
-            "status": "ok"
-        }
+    )
+    await db.commit()
+    return {
+        "status": "ok"
+    }
 
 
-async def setup_game(db: aiosqlite.Connection, white: int, black: int, board: int, round: int, tournament: int) -> Dict[str, Any]:
+async def setup_game(db: aiosqlite.Connection, white: int, black: int, board: int, round: int, tournament: int) -> \
+        Dict[str, Any]:
     id = generate_id(3)
-    async with db.execute(
-        """INSERT INTO games (id, board, white, black, round, tournament_id) VALUES (?, ?, ?, ?, ?, ?)""", [id, board, white, black, round, tournament]
-    ) as cursor:
-        await db.commit()
-        return {
-            "id": id,
-            "tournament": (await fetch_tournament_light(db, tournament)),
-            "board": board,
-            "round": round,
-            "white": (await fetch_player_light(db, white)),
-            "black": (await fetch_player_light(db, black)),
-            "official": None,
-            "result": None
-        }
+    await db.execute(
+        "INSERT INTO games (id, board, white, black, round, tournament_id) VALUES (?, ?, ?, ?, ?, ?)",
+        [id, board, white, black, round, tournament]
+    )
+    await db.commit()
+    return {
+        "id": id,
+        "tournament": (await fetch_tournament_light(db, tournament)),
+        "board": board,
+        "round": round,
+        "white": (await fetch_player_light(db, white)),
+        "black": (await fetch_player_light(db, black)),
+        "official": None,
+        "result": None
+    }
 
 
 def handle_json_error(
-    func: Callable[[web.Request], Awaitable[web.Response]]
+        func: Callable[[web.Request], Awaitable[web.Response]]
 ) -> Callable[[web.Request], Awaitable[web.Response]]:
     async def handler(request: web.Request) -> web.Response:
         try:
@@ -468,7 +467,7 @@ async def resolve_game(request: web.Request) -> web.json_response():
 async def delete_game(request: web.Request) -> web.json_response():
     game_id = request.match_info['id']
     db = request.config_dict['DB']
-    async with db.execute("DELETE FROM games WHERE id = ? CASCACE", [game_id]) as cursor:
+    async with db.execute("DELETE FROM games WHERE id = ? CASCADE", [game_id]) as cursor:
         if cursor.rowcount == 0:
             return web.json_response({
                 "status": f"Game {id} was not found"
@@ -493,7 +492,8 @@ async def create_tournament(request: web.Request) -> web.json_response():
     db = request.config_dict['DB']
     official_obj = await fetch_official(db, official)
     await db.execute(
-        "INSERT INTO tournaments (id, name, date, official, location, boards, rounds) VALUES(?, ?, ?, ?, ?, ?, ?)", [id, name, date, official, location, boards, rounds]
+        "INSERT INTO tournaments (id, name, date, official, location, boards, rounds) VALUES(?, ?, ?, ?, ?, ?, ?)",
+        [id, name, date, official, location, boards, rounds]
     )
     await db.commit()
     return web.json_response(
@@ -571,8 +571,8 @@ async def enroll_mass(request: web.Request) -> web.json_response():
         player_id = player['player']
         team_id = player['team']
         await db.execute(
-            """INSERT INTO enrollment (id, player_id, tournament_id, team_id) VALUES (?, ?, ?, ?)
-            """, [id, player_id, tournament_id, team_id]
+            "INSERT INTO enrollment (id, player_id, tournament_id, team_id) VALUES (?, ?, ?, ?)",
+            [id, player_id, tournament_id, team_id]
         )
         await db.commit()
         enrollment = await fetch_enrollment(db, id)
@@ -590,8 +590,8 @@ async def enroll_individual(request: web.Request) -> web.json_response():
     team = info['team']
     id = generate_id(4)
     await db.execute(
-        """INSERT INTO enrollment (id, player_id, tournament_id, team_id) VALUES (?, ?, ?, ?)
-        """, [id, player, tournament_id, team]
+        "INSERT INTO enrollment (id, player_id, tournament_id, team_id) VALUES (?, ?, ?, ?)",
+        [id, player, tournament_id, team]
     )
     await db.commit()
     enrollment = await fetch_enrollment(db, id)
@@ -605,7 +605,7 @@ async def organize_tournament(request: web.Request) -> web.json_response():
     db = request.config_dict['DB']
     players_enrolled = []
     async with db.execute(
-        """SELECT * FROM enrollment WHERE tournament_id = ?""", [tournament_id]
+            "SELECT * FROM enrollment WHERE tournament_id = ?", [tournament_id]
     ) as cursor:
         enrollment = await cursor.fetchall()
         for card in enrollment:
@@ -618,7 +618,8 @@ async def organize_tournament(request: web.Request) -> web.json_response():
     games = []
     while e < tournament['boards']:
         try:
-            games.append({"white": players_enrolled[i]['id'], "black": players_enrolled[i + 1]['id'], "round": round, "board": e})
+            games.append({"white": players_enrolled[i]['id'], "black": players_enrolled[i + 1]['id'], "round": round,
+                          "board": e})
             i += 2
             e += 1
         except IndexError:
@@ -628,7 +629,8 @@ async def organize_tournament(request: web.Request) -> web.json_response():
     created_games = []
     for game in games:
         try:
-            created = await setup_game(db, white=game['white'], black=game['black'], board=game['board'], round=round, tournament=tournament_id)
+            created = await setup_game(db, white=game['white'], black=game['black'], board=game['board'], round=round,
+                                       tournament=tournament_id)
             print(f"creating game {game}")
             created_games.append(created)
         except KeyError:
@@ -831,7 +833,7 @@ async def edit_team(request: web.Request) -> web.json_response():
 # Ping
 @router.get("/ping")
 @handle_json_error
-async def ping(request: web.Request) -> web.json_response():
+async def ping() -> web.json_response():
     return web.json_response(data={"ping": "pong"})
 
 
@@ -870,6 +872,5 @@ def try_make_db() -> None:
 
 
 try_make_db()
-
 
 web.run_app(init_app())
