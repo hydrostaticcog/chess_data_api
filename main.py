@@ -38,7 +38,7 @@ def generate_id(type: int) -> int:
     return (int(ts) << 16) + (node_id << 20) + (type << 24) + (random.randint(1, 1000) << 32)
 
 
-async def fetch_team_members(db: aiosqlite.Connection, id: int):
+async def fetch_team_members(db: aiosqlite.Connection, id: int) -> List[Any]:
     async with db.execute(
             "SELECT * FROM players WHERE team = ?", [id]
     ) as cursor:
@@ -51,7 +51,7 @@ async def fetch_team_members(db: aiosqlite.Connection, id: int):
         return members
 
 
-async def fetch_team_leaderboard(db: aiosqlite.Connection, id: int):
+async def fetch_team_leaderboard(db: aiosqlite.Connection, id: int) -> List[Any]:
     async with db.execute(
             "SELECT * FROM players WHERE team = ?", [id]
     ) as cursor:
@@ -80,7 +80,7 @@ async def fetch_team(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
         }
 
 
-async def fetch_team_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def fetch_team_light(db: aiosqlite.Connection, id: int) -> Dict[str, str]:
     async with db.execute(
             "SELECT * FROM teams WHERE id = id", [id]
     ) as cursor:
@@ -163,7 +163,7 @@ async def fetch_player_standings(db: aiosqlite.Connection, id: int, tournament_i
         }
 
 
-async def fetch_official(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def fetch_official(db: aiosqlite.Connection, id: int) -> Dict[str, str]:
     async with db.execute(
             "SELECT * FROM officials WHERE id = ?", [id]
     ) as cursor:
@@ -204,7 +204,7 @@ async def fetch_tournament(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
         }
 
 
-async def fetch_tournament_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def fetch_tournament_light(db: aiosqlite.Connection, id: int) -> Dict[str, str]:
     async with db.execute(
             "SELECT * FROM tournaments WHERE id = ?", [id]
     ) as cursor:
@@ -288,7 +288,7 @@ async def fetch_enrollment(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
         }
 
 
-async def fetch_games_by_rounds(db: aiosqlite.Connection, id: int, round: int) -> List[Dict[str, Any]]:
+async def fetch_games_by_rounds(db: aiosqlite.Connection, id: int, round: int) -> List[Dict[str, str]]:
     async with db.execute(
             "SELECT * FROM games WHERE tournament_id = ? AND round = ?", [id, round]
     ) as cursor:
@@ -300,7 +300,7 @@ async def fetch_games_by_rounds(db: aiosqlite.Connection, id: int, round: int) -
         return games
 
 
-async def add_win(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def add_win(db: aiosqlite.Connection, id: int) -> Dict[str, str]:
     player = await fetch_player(db, id)
     await db.execute(
             f"UPDATE players SET wins = ? WHERE id = ?", [player['wins'] + 1, id]
@@ -311,7 +311,7 @@ async def add_win(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
     }
 
 
-async def add_loss(db: aiosqlite.Connection, id: int, ) -> Dict[str, Any]:
+async def add_loss(db: aiosqlite.Connection, id: int, ) -> Dict[str, str]:
     player = await fetch_player(db, id)
     await db.execute(
             f"UPDATE players SET losses = ? WHERE id = ?", [player['losses'] + 1, id])
@@ -321,7 +321,7 @@ async def add_loss(db: aiosqlite.Connection, id: int, ) -> Dict[str, Any]:
     }
 
 
-async def add_draw(db: aiosqlite.Connection, id_1: int, id_2: int) -> Dict[str, Any]:
+async def add_draw(db: aiosqlite.Connection, id_1: int, id_2: int) -> Dict[str, str]:
     player1 = await fetch_player(db, id_1)
     player2 = await fetch_player(db, id_2)
     await db.executescript(
@@ -378,7 +378,7 @@ def handle_json_error(
 # Game Queries
 @router.post("/games")
 @handle_json_error
-async def create_game(request: web.Request) -> web.json_response():
+async def create_game(request: web.Request) -> web.Response:
     info = await request.json()
     tournament = info['tournament']
     white = info['white']
@@ -392,7 +392,7 @@ async def create_game(request: web.Request) -> web.json_response():
 
 @router.get("/games/{id}")
 @handle_json_error
-async def get_game(request: web.Request) -> web.json_response():
+async def get_game(request: web.Request) -> web.Response:
     game_id = request.match_info['id']
     db = request.config_dict['DB']
     game = await fetch_game(db, game_id)
@@ -401,7 +401,7 @@ async def get_game(request: web.Request) -> web.json_response():
 
 @router.patch("/games/{id}")
 @handle_json_error
-async def edit_game(request: web.Request) -> web.json_response():
+async def edit_game(request: web.Request) -> web.Response:
     game_id = request.match_info['id']
     game = await request.json()
     db = request.config_dict['DB']
@@ -429,7 +429,7 @@ async def edit_game(request: web.Request) -> web.json_response():
 
 @router.post("/games/{id}/resolve")
 @handle_json_error
-async def resolve_game(request: web.Request) -> web.json_response():
+async def resolve_game(request: web.Request) -> web.Response:
     game_id = request.match_info['id']
     info = await request.json()
     db = request.config_dict['DB']
@@ -464,7 +464,7 @@ async def resolve_game(request: web.Request) -> web.json_response():
 
 @router.delete("/games/{id}")
 @handle_json_error
-async def delete_game(request: web.Request) -> web.json_response():
+async def delete_game(request: web.Request) -> web.Response:
     game_id = request.match_info['id']
     db = request.config_dict['DB']
     async with db.execute("DELETE FROM games WHERE id = ? CASCADE", [game_id]) as cursor:
@@ -480,7 +480,7 @@ async def delete_game(request: web.Request) -> web.json_response():
 # Tournament Queries
 @router.post("/tournaments")
 @handle_json_error
-async def create_tournament(request: web.Request) -> web.json_response():
+async def create_tournament(request: web.Request) -> web.Response:
     info = await request.json()
     id = generate_id(3)
     name = info['name']
@@ -512,7 +512,7 @@ async def create_tournament(request: web.Request) -> web.json_response():
 
 @router.get("/tournaments/{id}")
 @handle_json_error
-async def get_tournaments(request: web.Request) -> web.json_response():
+async def get_tournaments(request: web.Request) -> web.Response:
     tournament_id = request.match_info['id']
     db = request.config_dict['DB']
     tournament = await fetch_tournament(db, tournament_id)
@@ -521,7 +521,7 @@ async def get_tournaments(request: web.Request) -> web.json_response():
 
 @router.get("/tournaments/{id}/standings/{player_id}")
 @handle_json_error
-async def get_player_standings_t(request: web.Request) -> web.json_response():
+async def get_player_standings_t(request: web.Request) -> web.Response:
     tournament_id = request.match_info['id']
     player_id = request.match_info['player_id']
     db = request.config_dict['DB']
@@ -531,7 +531,7 @@ async def get_player_standings_t(request: web.Request) -> web.json_response():
 
 @router.patch("/tournaments/{id}")
 @handle_json_error
-async def edit_tournaments(request: web.Request) -> web.json_response():
+async def edit_tournaments(request: web.Request) -> web.Response:
     tournament_id = request.match_info['id']
     tournament = await request.json()
     db = request.config_dict['DB']
@@ -560,7 +560,7 @@ async def edit_tournaments(request: web.Request) -> web.json_response():
 
 @router.post("/tournaments/{id}/enroll/mass")
 @handle_json_error
-async def enroll_mass(request: web.Request) -> web.json_response():
+async def enroll_mass(request: web.Request) -> web.Response:
     info = await request.json()
     tournament_id = request.match_info['id']
     db = request.config_dict['DB']
@@ -582,7 +582,7 @@ async def enroll_mass(request: web.Request) -> web.json_response():
 
 @router.post("/tournaments/{id}/enroll")
 @handle_json_error
-async def enroll_individual(request: web.Request) -> web.json_response():
+async def enroll_individual(request: web.Request) -> web.Response:
     info = await request.json()
     tournament_id = request.match_info['id']
     db = request.config_dict['DB']
@@ -599,7 +599,7 @@ async def enroll_individual(request: web.Request) -> web.json_response():
 
 
 @router.post("/tournaments/{id}/organize/{round}")
-async def organize_tournament(request: web.Request) -> web.json_response():
+async def organize_tournament(request: web.Request) -> web.Response:
     tournament_id = request.match_info['id']
     round = request.match_info['round']
     db = request.config_dict['DB']
@@ -644,7 +644,7 @@ async def organize_tournament(request: web.Request) -> web.json_response():
 # Official Queries
 @router.get("/officials/{id}")
 @handle_json_error
-async def get_officials(request: web.Request) -> web.json_response():
+async def get_officials(request: web.Request) -> web.Response:
     official_id = request.match_info['id']
     db = request.config_dict['DB']
     official = await fetch_official(db, official_id)
@@ -653,7 +653,7 @@ async def get_officials(request: web.Request) -> web.json_response():
 
 @router.post("/officials")
 @handle_json_error
-async def create_officials(request: web.Request) -> web.json_response():
+async def create_officials(request: web.Request) -> web.Response:
     info = await request.json()
     id = generate_id(3)
     name = info['name']
@@ -676,7 +676,7 @@ async def create_officials(request: web.Request) -> web.json_response():
 
 @router.patch("/officials/{id}")
 @handle_json_error
-async def edit_official(request: web.Request) -> web.json_response():
+async def edit_official(request: web.Request) -> web.Response:
     official_id = request.match_info['id']
     official = await request.json()
     db = request.config_dict['DB']
@@ -698,7 +698,7 @@ async def edit_official(request: web.Request) -> web.json_response():
 # Player Queries
 @router.post("/players")
 @handle_json_error
-async def create_player(request: web.Request) -> web.json_response():
+async def create_player(request: web.Request) -> web.Response:
     info = await request.json()
     id = generate_id(1)
     name = info['name']
@@ -726,7 +726,7 @@ async def create_player(request: web.Request) -> web.json_response():
 
 @router.get("/players/{id}")
 @handle_json_error
-async def get_player(request: web.Request) -> web.json_response():
+async def get_player(request: web.Request) -> web.Response:
     player_id = request.match_info['id']
     db = request.config_dict['DB']
     player = await fetch_player(db, player_id)
@@ -735,7 +735,7 @@ async def get_player(request: web.Request) -> web.json_response():
 
 @router.patch("/players/{id}")
 @handle_json_error
-async def edit_player(request: web.Request) -> web.json_response():
+async def edit_player(request: web.Request) -> web.Response:
     player_id = request.match_info['id']
     player = await request.json()
     db = request.config_dict['DB']
@@ -756,7 +756,7 @@ async def edit_player(request: web.Request) -> web.json_response():
 
 @router.delete("/players/{id}")
 @handle_json_error
-async def delete_players(request: web.Request) -> web.json_response():
+async def delete_players(request: web.Request) -> web.Response:
     player_id = request.match_info['id']
     db = request.config_dict['DB']
     async with db.execute("DELETE FROM players WHERE id = ?", [player_id]) as cursor:
@@ -771,7 +771,7 @@ async def delete_players(request: web.Request) -> web.json_response():
 
 # Team Queries
 @router.post("/teams")
-async def create_team(request: web.Request) -> web.json_response():
+async def create_team(request: web.Request) -> web.Response:
     info = await request.json()
     id = generate_id(2)
     name = info['name']
@@ -793,7 +793,7 @@ async def create_team(request: web.Request) -> web.json_response():
 
 @router.get("/teams/{id}")
 @handle_json_error
-async def get_teams(request: web.Request) -> web.json_response():
+async def get_teams(request: web.Request) -> web.Response:
     team_id = request.match_info['id']
     db = request.config_dict['DB']
     team = await fetch_team(db, team_id)
@@ -802,7 +802,7 @@ async def get_teams(request: web.Request) -> web.json_response():
 
 @router.get("/teams/{id}/leaderboard")
 @handle_json_error
-async def get_team_lb(request: web.Request) -> web.json_response():
+async def get_team_lb(request: web.Request) -> web.Response:
     team_id = request.match_info['id']
     db = request.config_dict['DB']
     team = await fetch_team_leaderboard(db, team_id)
@@ -811,7 +811,7 @@ async def get_team_lb(request: web.Request) -> web.json_response():
 
 @router.patch("/teams/{id}")
 @handle_json_error
-async def edit_team(request: web.Request) -> web.json_response():
+async def edit_team(request: web.Request) -> web.Response:
     team_id = request.match_info['id']
     team = await request.json()
     db = request.config_dict['DB']
@@ -833,7 +833,7 @@ async def edit_team(request: web.Request) -> web.json_response():
 # Ping
 @router.get("/ping")
 @handle_json_error
-async def ping() -> web.json_response():
+async def ping() -> web.Response:
     return web.json_response(data={"ping": "pong"})
 
 
