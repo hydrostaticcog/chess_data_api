@@ -1,14 +1,17 @@
 import asyncio
 import datetime
-import random
 import json
-from limigrations import limigrations
+import random
 from pathlib import Path
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List
+from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, TypeAlias, Union
 
 import aiosqlite
 from aiohttp import web
 from aiohttp_basicauth import BasicAuthMiddleware
+from limigrations import limigrations
+
+
+PlayerT: TypeAlias = Dict[str, Union[str, int]]
 
 with open("config.json", "r") as f:
     creds = json.load(f)
@@ -38,39 +41,47 @@ def generate_id(type: int) -> int:
     return (int(ts) << 16) + (node_id << 20) + (type << 24) + (random.randint(1, 1000) << 32)
 
 
-async def fetch_team_members(db: aiosqlite.Connection, id: int) -> List[Any]:
+async def fetch_team_members(db: aiosqlite.Connection, id: int) -> List[PlayerT]:
     async with db.execute(
             "SELECT * FROM players WHERE team = ?", [id]
     ) as cursor:
         rows = await cursor.fetchall()
         members = []
+
         for row in rows:
             m = await fetch_player_light(db, row['id'])
             members.append(m)
+
         members.sort(key=lambda s: s['name'].split()[-1])
+
         return members
 
 
-async def fetch_team_leaderboard(db: aiosqlite.Connection, id: int) -> List[Any]:
+async def fetch_team_leaderboard(db: aiosqlite.Connection, id: int) -> List[PlayerT]:
     async with db.execute(
             "SELECT * FROM players WHERE team = ?", [id]
     ) as cursor:
         rows = await cursor.fetchall()
         members = []
+
         for row in rows:
             m = await fetch_player_light(db, row['id'])
             members.append(m)
+
         members.sort(reverse=True, key=lambda s: (s['wins'] + .5 * s['draws']) - (s['losses'] + .5 * s['draws']))
+
         return members
 
 
-async def fetch_team(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def fetch_team(db: aiosqlite.Connection, id: int) -> Dict[str, Union[str, int, List[List[PlayerT]]]]:
     async with db.execute(
             "SELECT * FROM teams WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
+
         if not row:
             raise NotFoundException(f"Team {id} does not exist!")
+
         return {
             "id": id,
             "type": "team",
@@ -80,13 +91,15 @@ async def fetch_team(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
         }
 
 
-async def fetch_team_light(db: aiosqlite.Connection, id: int) -> Dict[str, str]:
+async def fetch_team_light(db: aiosqlite.Connection, id: int) -> Dict[str, Union[str, int, None]]:
     async with db.execute(
             "SELECT * FROM teams WHERE id = id", [id]
     ) as cursor:
         row = await cursor.fetchone()
+
         if not row:
             raise NotFoundException(f"Team {id} does not exist!")
+
         return {
             "id": id,
             "type": "team",
@@ -96,13 +109,15 @@ async def fetch_team_light(db: aiosqlite.Connection, id: int) -> Dict[str, str]:
         }
 
 
-async def fetch_player(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def fetch_player(db: aiosqlite.Connection, id: int) -> Dict[str, Union[str, int, Dict[str, str | int | List[List[PlayerT]]]]]:
     async with db.execute(
             "SELECT * FROM players WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
+
         if not row:
             raise NotFoundException(f"Player {id} does not exist!")
+
         return {
             "id": row["id"],
             "type": "player",
@@ -115,13 +130,15 @@ async def fetch_player(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
         }
 
 
-async def fetch_player_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def fetch_player_light(db: aiosqlite.Connection, id: int) -> PlayerT:
     async with db.execute(
             "SELECT * FROM players WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
+
         if not row:
             raise NotFoundException(f"Player {id} does not exist!")
+
         return {
             "id": row["id"],
             "type": "player",
@@ -134,25 +151,32 @@ async def fetch_player_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any
         }
 
 
-async def fetch_player_standings(db: aiosqlite.Connection, id: int, tournament_id: int) -> Dict[str, Any]:
+async def fetch_player_standings(db: aiosqlite.Connection, id: int, tournament_id: int) -> PlayerT:
     async with db.execute(
             "SELECT * FROM games WHERE (tournament_id = ? AND ? in (black, white))", [tournament_id, id]
     ) as cursor:
         rows = await cursor.fetchall()
+
         wins = 0
         losses = 0
         draws = 0
+
         print(rows)
+
         for row in rows:
             print(row)
             if row['result'] == id:
                 wins += 1
+
             elif row['result'] == 'draw':
                 draws += 1
+
             elif row['result'] is None:
                 continue
+
             else:
                 losses += 1
+
         return {
             "id": id,
             "type": "player-tournament_standings",
@@ -163,7 +187,7 @@ async def fetch_player_standings(db: aiosqlite.Connection, id: int, tournament_i
         }
 
 
-async def fetch_official(db: aiosqlite.Connection, id: int) -> Dict[str, str]:
+async def fetch_official(db: aiosqlite.Connection, id: int) -> PlayerT:
     async with db.execute(
             "SELECT * FROM officials WHERE id = ?", [id]
     ) as cursor:
@@ -179,18 +203,22 @@ async def fetch_official(db: aiosqlite.Connection, id: int) -> Dict[str, str]:
         }
 
 
-async def fetch_tournament(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def fetch_tournament(db: aiosqlite.Connection, id: int) -> Dict[str, Union[str, int, PlayerT, List[Dict[str, str]]]]:
     async with db.execute(
             "SELECT * FROM tournaments WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
+
         if not row:
             raise NotFoundException(f"Tournament {id} does not exist!")
+
         rounds = {}
         c = 0
+
         while c < row['rounds']:
             rounds.update({f"{c + 1}": (await fetch_games_by_rounds(db, id, c + 1))})
             c += 1
+
         return {
             "id": row["id"],
             "type": "tournament",
@@ -204,13 +232,15 @@ async def fetch_tournament(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
         }
 
 
-async def fetch_tournament_light(db: aiosqlite.Connection, id: int) -> Dict[str, str]:
+async def fetch_tournament_light(db: aiosqlite.Connection, id: int) -> Dict[str, Union[str, int, None]]:
     async with db.execute(
             "SELECT * FROM tournaments WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
+
         if not row:
             raise NotFoundException(f"Tournament {id} does not exist!")
+
         return {
             "id": row["id"],
             "type": "tournament",
@@ -224,17 +254,20 @@ async def fetch_tournament_light(db: aiosqlite.Connection, id: int) -> Dict[str,
         }
 
 
-async def fetch_game(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def fetch_game(db: aiosqlite.Connection, id: int) -> Dict[str, Union[str, int, Dict[str, Union[str, int, None]], PlayerT]]:
     async with db.execute(
             "SELECT * FROM games WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
+
         if not row:
             raise NotFoundException(f"game {id} does not exist!")
+
         if row['official'] is None:
             official_obj = None
         else:
             official_obj = await fetch_official(db, row["official"])
+
         return {
             "id": row["id"],
             "type": "game",
@@ -248,17 +281,20 @@ async def fetch_game(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
         }
 
 
-async def fetch_game_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def fetch_game_light(db: aiosqlite.Connection, id: int) -> Dict[str, Union[str, int, PlayerT]]:
     async with db.execute(
             "SELECT * FROM games WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
+
         if not row:
             raise NotFoundException(f"game {id} does not exist!")
+
         if row['official'] is None:
             official_obj = None
         else:
             official_obj = await fetch_official(db, row["official"])
+
         return {
             "id": row["id"],
             "type": "game",
@@ -272,13 +308,15 @@ async def fetch_game_light(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
         }
 
 
-async def fetch_enrollment(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
+async def fetch_enrollment(db: aiosqlite.Connection, id: int) -> Dict[str, Union[str, int, PlayerT, Dict[str, str | int | PlayerT | List[Dict[str, str]]], Dict[str, str | int | None]]]:
     async with db.execute(
             "SELECT * FROM enrollment WHERE id = ?", [id]
     ) as cursor:
         row = await cursor.fetchone()
+
         if not row:
             raise NotFoundException(f"enrollment card {id} does not exist!")
+
         return {
             "id": row['id'],
             "type": "enrollment",
@@ -288,15 +326,17 @@ async def fetch_enrollment(db: aiosqlite.Connection, id: int) -> Dict[str, Any]:
         }
 
 
-async def fetch_games_by_rounds(db: aiosqlite.Connection, id: int, round: int) -> List[Dict[str, str]]:
+async def fetch_games_by_rounds(db: aiosqlite.Connection, id: int, round: int) -> List[Dict[str, Dict[str, str | int | PlayerT]]]:
     async with db.execute(
             "SELECT * FROM games WHERE tournament_id = ? AND round = ?", [id, round]
     ) as cursor:
         rows = await cursor.fetchall()
         games = []
+
         for row in rows:
             m = await fetch_game_light(db, row['id'])
             games.append(m)
+
         return games
 
 
@@ -306,6 +346,7 @@ async def add_win(db: aiosqlite.Connection, id: int) -> Dict[str, str]:
             f"UPDATE players SET wins = ? WHERE id = ?", [player['wins'] + 1, id]
     )
     await db.commit()
+
     return {
         "status": "ok"
     }
@@ -316,6 +357,7 @@ async def add_loss(db: aiosqlite.Connection, id: int, ) -> Dict[str, str]:
     await db.execute(
             f"UPDATE players SET losses = ? WHERE id = ?", [player['losses'] + 1, id])
     await db.commit()
+
     return {
         "status": "ok"
     }
@@ -330,19 +372,21 @@ async def add_draw(db: aiosqlite.Connection, id_1: int, id_2: int) -> Dict[str, 
         """
     )
     await db.commit()
+
     return {
         "status": "ok"
     }
 
 
 async def setup_game(db: aiosqlite.Connection, white: int, black: int, board: int, round: int, tournament: int) -> \
-        Dict[str, Any]:
+        Dict[str, Union[int, Dict[str, str | int | None], PlayerT, None]]:
     id = generate_id(3)
     await db.execute(
         "INSERT INTO games (id, board, white, black, round, tournament_id) VALUES (?, ?, ?, ?, ?, ?)",
         [id, board, white, black, round, tournament]
     )
     await db.commit()
+
     return {
         "id": id,
         "tournament": (await fetch_tournament_light(db, tournament)),
