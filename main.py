@@ -3,7 +3,7 @@ import datetime
 import json
 import random
 from pathlib import Path
-from typing import Any, AsyncIterator, Awaitable, Callable, Dict, List, TypeAlias, Union
+from typing import AsyncIterator, Awaitable, Callable, Dict, List, TypeAlias, Union
 
 import aiosqlite
 from aiohttp import web
@@ -153,15 +153,13 @@ async def fetch_player_light(db: aiosqlite.Connection, id: int) -> PlayerT:
 
 async def fetch_player_standings(db: aiosqlite.Connection, id: int, tournament_id: int) -> PlayerT:
     async with db.execute(
-            "SELECT * FROM games WHERE (tournament_id = ? AND ? in (black, white))", [tournament_id, id]
+            "SELECT * FROM games WHERE (tournament_id = ? AND ? in (black, white))", [int(tournament_id), int(id)]
     ) as cursor:
         rows = await cursor.fetchall()
 
         wins = 0
         losses = 0
         draws = 0
-
-        print(rows)
 
         for row in rows:
             print(row)
